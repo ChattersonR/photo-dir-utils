@@ -1,3 +1,5 @@
 .idea
 *.iml
 venv
+dist
+__pycache__
