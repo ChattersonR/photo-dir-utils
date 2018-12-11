@@ -33,6 +33,23 @@ SIDECAR_NAME = ['.xmp']
 logger = logging.getLogger("camera-roll-utils")
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
+def doFileTransfer(src, dest, transferCommand):
+    if src != dest:
+        if not os.path.exists(dest):
+            transferCommand(src, dest)
+            return True
+        else:
+            logger.error("ERROR: File already exists. From {} To {}".format(src, dest))
+            return False
+
+def doMakeDir(dest, mkdirCommand):
+    try:
+        mkdirCommand(dest)
+        return True
+    except os.error:
+        logger.error("Error creating directory: {}".format(dest))
+        return False
+
 def preProcessInputDir(importPath):
     existingDirectories = []
     unsortedRaw = {}
@@ -71,65 +88,36 @@ def preProcessInputDir(importPath):
             workingDict[key].append(os.path.join(root, _file))
     return existingDirectories, unsortedRaw, sidecars, unsortedJpg
 
-def importFilesFromCard(directories, dryRun=False):
-    outputSortedFiles(directories[1], preProcessInputDir(directories[0]), copyfile, dryRun=dryRun)
+def importFilesFromCard(directories, transferCommand, mkdirCommand):
+    outputSortedFiles(directories[1], preProcessInputDir(directories[0]), transferCommand, mkdirCommand)
 
-def organizeInPlace(cameraRollDirectory, dryRun=False):
-    outputSortedFiles(cameraRollDirectory, preProcessInputDir(cameraRollDirectory), os.rename, dryRun=dryRun)
+def organizeInPlace(cameraRollDirectory, transferCommand, mkdirCommand):
+    outputSortedFiles(cameraRollDirectory, preProcessInputDir(cameraRollDirectory), transferCommand, mkdirCommand)
 
-def outputSortedFiles(outputDirectory, preProcessResults, transferCommand, dryRun=False):
+def outputSortedFiles(outputDirectory, preProcessResults, transferCommand, mkdirCommand):
     existingDirectories, unsortedRaw, sidecars, unsortedJpg = preProcessResults
 
     for _key, _value in unsortedRaw.items():
         _path = os.path.join(outputDirectory, _key)
         if _key not in existingDirectories:
-            try:
-                logger.debug("mkdir {}".format(_path))
-                if not dryRun:
-                    os.makedirs(_path)
-            except os.error:
-                logger.error("Error creating directory: {}".format(_path))
+            if not doMakeDir(_path, mkdirCommand):
                 sys.exit("Error creating directory: {}".format(_path))
 
         for _file in _value:
             basename = os.path.basename(_file)
-            if os.path.join(_path, basename) != _file:
-                if not os.path.exists(os.path.join(_path, basename)):
-                    logger.debug("{} {} {}".format(transferCommand.__str__(), _file, os.path.join(_path, basename)))
-                    if not dryRun:
-                        transferCommand(_file, os.path.join(_path, basename))
-                else:
-                    logger.error("ERROR: File already exists. From {} To {}".format(_file, os.path.join(_path, basename)))
-            if sidecars.get(basename) is not None \
-                    and os.path.join(_path, os.path.basename(sidecars[basename])) != sidecars[basename]:
-                sidecarPath = os.path.join(_path, os.path.basename(sidecars[basename]))
-                if not os.path.exists(sidecarPath):
-                    logger.debug("{} {} {}".format(transferCommand.__str__(), sidecars[basename], sidecarPath))
-                    if not dryRun:
-                        transferCommand(sidecars[basename], sidecarPath)
-                else:
-                    logger.error("ERROR: File already exists. From {} To {)".format(_file, sidecarPath))
+            doFileTransfer(_file, os.path.join(_path, basename), transferCommand)
+            if sidecars.get(basename) is not None:
+                doFileTransfer(sidecars[basename], os.path.join(_path, os.path.basename(sidecars[basename])), transferCommand)
 
     for _key, _value in unsortedJpg.items():
         _path = os.path.join(outputDirectory, _key, 'jpg')
         if not os.path.exists(_path):
-            try:
-                logger.debug("mkdir {}".format(_path))
-                if not dryRun:
-                    os.makedirs(_path)
-            except os.error:
-                logger.error("Error creating directory: {}".format(_path))
+            if not doMakeDir(_path, mkdirCommand):
                 sys.exit("Error creating directory: {}".format(_path))
 
         for _file in _value:
             basename = os.path.basename(_file)
-            if os.path.join(_path, basename) != _file:
-                if not os.path.exists(os.path.join(_path, basename)):
-                    logger.debug("{} {} {}".format(transferCommand.__str__(), _file, os.path.join(_path, basename)))
-                    if not dryRun:
-                        transferCommand(_file, os.path.join(_path, basename))
-                else:
-                    logger.error("ERROR: File already exists. From {} To {}".format(_file, os.path.join(_path, basename)))
+            doFileTransfer(_file, os.path.join(_path, basename), transferCommand)
 
 def cleanup(directory, dryRun=False):
     print("todo")
@@ -150,6 +138,11 @@ FUNCTION_MAP = {
     "cleanup" : cleanup,
 }
 
+TRANSFER_FUNC_MAP = {
+    "copy": copyfile,
+    "move": os.rename,
+    "dryRun": lambda src, dest: logger.debug("{} -> {}".format(src, dest))
+}
 parser = argparse.ArgumentParser(description="Utility for managing the Pictures directory.")
 parser.add_argument("-d", help="Set debug output.", action='store_true', dest='dryRun')
 subparsers = parser.add_subparsers(help="Commands", dest="command")
@@ -177,8 +170,12 @@ cleanupParser.add_argument("directory",
 args = parser.parse_args()
 if args.dryRun:
     logger.setLevel(logging.DEBUG)
+    transferFunc = TRANSFER_FUNC_MAP['dryRun']
+    mkdirFunc = lambda dest: logger.debug("mkdir {}".format(dest))
 else:
+    transferFunc = TRANSFER_FUNC_MAP[args.command]
+    mkdirFunc = os.makedirs
     logger.setLevel(logging.ERROR)
 
 logger.debug(args.directory)
-FUNCTION_MAP[args.command](args.directory, dryRun=args.dryRun)
+FUNCTION_MAP[args.command](args.directory, transferFunc, mkdirFunc)
