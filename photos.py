@@ -33,9 +33,15 @@ SIDECAR_NAME = ['.xmp']
 logger = logging.getLogger("camera-roll-utils")
 logger.addHandler(logging.StreamHandler(sys.stdout))
 
+def errorExit(message):
+    logger.error(message)
+    input("Press any key to exit")
+    sys.exit(1)
+
 def doFileTransfer(src, dest, transferCommand):
     if src != dest:
         if not os.path.exists(dest):
+            logger.debug("{} -> {}".format(src, dest))
             transferCommand(src, dest)
             return True
         else:
@@ -43,7 +49,11 @@ def doFileTransfer(src, dest, transferCommand):
             return False
 
 def doMakeDir(dest, mkdirCommand):
+    if not os.path.exists(dest):
+        return True
+
     try:
+        logger.debug("mkdir {}".format(dest))
         mkdirCommand(dest)
         return True
     except os.error:
@@ -101,7 +111,7 @@ def outputSortedFiles(outputDirectory, preProcessResults, transferCommand, mkdir
         _path = os.path.join(outputDirectory, _key)
         if _key not in existingDirectories:
             if not doMakeDir(_path, mkdirCommand):
-                sys.exit("Error creating directory: {}".format(_path))
+                errorExit("FATAL: Error creating directory: {}".format(_path))
 
         for _file in _value:
             basename = os.path.basename(_file)
@@ -113,7 +123,7 @@ def outputSortedFiles(outputDirectory, preProcessResults, transferCommand, mkdir
         _path = os.path.join(outputDirectory, _key, 'jpg')
         if not os.path.exists(_path):
             if not doMakeDir(_path, mkdirCommand):
-                sys.exit("Error creating directory: {}".format(_path))
+                errorExit("FATAL: Error creating directory: {}".format(_path))
 
         for _file in _value:
             basename = os.path.basename(_file)
@@ -144,7 +154,8 @@ TRANSFER_FUNC_MAP = {
     "dryRun": lambda src, dest: logger.debug("{} -> {}".format(src, dest))
 }
 parser = argparse.ArgumentParser(description="Utility for managing the Pictures directory.")
-parser.add_argument("-d", help="Set debug output.", action='store_true', dest='dryRun')
+parser.add_argument("-d", help="Do a Dry Run.", action='store_true', dest='dryRun')
+parser.add_argument("-v", help="Set debug output.", action='store_true', dest='verbose')
 subparsers = parser.add_subparsers(help="Commands", dest="command")
 subparsers.required = True
 organizeParser = subparsers.add_parser("organize", help="Organize an existing Camera Roll directory to conform to the standard.")
@@ -168,14 +179,20 @@ cleanupParser.add_argument("directory",
                           )
 
 args = parser.parse_args()
+if args.dryRun or args.verbose:
+    logger.setlevel(logging.DEBUG)
+else:
+    logger.setLevel(logging.ERROR)
+
 if args.dryRun:
-    logger.setLevel(logging.DEBUG)
     transferFunc = TRANSFER_FUNC_MAP['dryRun']
     mkdirFunc = lambda dest: logger.debug("mkdir {}".format(dest))
 else:
     transferFunc = TRANSFER_FUNC_MAP[args.command]
     mkdirFunc = os.makedirs
-    logger.setLevel(logging.ERROR)
 
 logger.debug(args.directory)
 FUNCTION_MAP[args.command](args.directory, transferFunc, mkdirFunc)
+
+if args.verbose:
+    input("Press any key to exit.")
