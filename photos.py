@@ -49,7 +49,7 @@ def doFileTransfer(src, dest, transferCommand):
             return False
 
 def doMakeDir(dest, mkdirCommand):
-    if not os.path.exists(dest):
+    if os.path.exists(dest):
         return True
 
     try:
@@ -143,14 +143,14 @@ def get_date_taken(path):
         return Image.open(path)._getexif()[36867]
 
 FUNCTION_MAP = {
-    "organize" : organizeInPlace,
-    "import" : importFilesFromCard,
-    "cleanup" : cleanup,
+    "organize": organizeInPlace,
+    "import": importFilesFromCard,
+    "cleanup": cleanup,
 }
 
 TRANSFER_FUNC_MAP = {
-    "copy": copyfile,
-    "move": os.rename,
+    "import": copyfile,
+    "organize": os.rename,
     "dryRun": lambda src, dest: logger.debug("{} -> {}".format(src, dest))
 }
 parser = argparse.ArgumentParser(description="Utility for managing the Pictures directory.")
@@ -180,7 +180,7 @@ cleanupParser.add_argument("directory",
 
 args = parser.parse_args()
 if args.dryRun or args.verbose:
-    logger.setlevel(logging.DEBUG)
+    logger.setLevel(logging.DEBUG)
 else:
     logger.setLevel(logging.ERROR)
 
